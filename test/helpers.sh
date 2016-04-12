@@ -2,7 +2,7 @@
 
 set -e -u
 
-set -o pipefail
+#set -o pipefail
 
 resource_dir=/opt/resource
 

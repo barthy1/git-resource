@@ -1,16 +1,19 @@
-FROM concourse/busyboxplus:git
+FROM 140.211.168.166:5000/golang1.6
 
 ENV LANG C
+RUN apt-get install -y curl
 
-ADD http://stedolan.github.io/jq/download/linux64/jq /usr/local/bin/jq
-RUN chmod +x /usr/local/bin/jq
+RUN echo "dash dash/sh boolean false" | debconf-set-selections
+RUN DEBIAN_FRONTEND=noninteractive dpkg-reconfigure dash
+
+ADD scripts/install_git_lfs_ppc64le.sh /tmp/install_git_lfs_ppc64le.sh
+RUN /tmp/install_git_lfs_ppc64le.sh
 
 ADD assets/ /opt/resource/
 RUN chmod +x /opt/resource/*
 
-ADD scripts/install_git_lfs.sh install_git_lfs.sh
-RUN ./install_git_lfs.sh
+ADD scripts/install_jq.sh /tmp/install_jq.sh
+RUN /tmp/install_jq.sh
 
 ADD test/ /opt/resource-tests/
-RUN /opt/resource-tests/all.sh && \
-  rm -rf /tmp/*
+RUN rm -rf /tmp/*
