@@ -31,6 +31,28 @@ it_can_put_to_url() {
   test "$(git -C $repo1 rev-parse some-tag)" = $ref
 }
 
+it_returns_branch_in_metadata() {
+  local repo1=$(init_repo)
+
+  local src=$(mktemp -d $TMPDIR/put-src.XXXXXX)
+  local repo2=$src/repo
+  git clone $repo1 $repo2
+
+  local ref=$(make_commit $repo2)
+
+  # create a tag to push
+  git -C $repo2 tag some-tag
+
+  # cannot push to repo while it's checked out to a branch
+  git -C $repo1 checkout refs/heads/master
+
+  put_uri $repo1 $src repo | jq -e "
+    .version == {ref: $(echo $ref | jq -R .)}
+    and
+	(.metadata | .[] | select(.name == \"branch\") | .value == $(echo master | jq -R .))
+  "
+}
+
 it_can_put_to_url_with_tag() {
   local repo1=$(init_repo)
 
@@ -241,7 +263,38 @@ it_can_put_to_url_with_only_tag() {
   test "$(git -C $repo1 rev-parse some-only-tag)" = $ref
 }
 
+it_can_put_and_set_git_config() {
+  local repo1=$(init_repo)
+
+  local src=$(mktemp -d $TMPDIR/put-src.XXXXXX)
+  local repo2=$src/repo
+  git clone $repo1 $repo2
+
+  local ref=$(make_commit $repo2)
+
+  # create a tag to push
+  git -C $repo2 tag some-tag
+
+  # cannot push to repo while it's checked out to a branch
+  git -C $repo1 checkout refs/heads/master
+
+  cp ~/.gitconfig ~/.gitconfig.orig
+
+  put_uri_with_config $repo1 $src repo | jq -e "
+    .version == {ref: $(echo $ref | jq -R .)}
+  "
+
+  # switch back to master
+  git -C $repo1 checkout master
+
+  test "$(git config --global core.pager)" == 'true'
+  test "$(git config --global credential.helper)" == '!true long command with variables $@'
+
+  mv ~/.gitconfig.orig ~/.gitconfig
+}
+
 run it_can_put_to_url
+run it_returns_branch_in_metadata
 run it_can_put_to_url_with_tag
 run it_can_put_to_url_with_tag_and_prefix
 run it_can_put_to_url_with_tag_and_annotation
@@ -249,3 +302,4 @@ run it_can_put_to_url_with_rebase
 run it_can_put_to_url_with_rebase_with_tag
 run it_can_put_to_url_with_rebase_with_tag_and_prefix
 run it_can_put_to_url_with_only_tag
+run it_can_put_and_set_git_config

@@ -90,7 +90,7 @@ make_commit_to_branch() {
 }
 
 make_commit() {
-  make_commit_to_file $1 some-file
+  make_commit_to_file $1 some-file "${2:-}"
 }
 
 make_commit_to_be_skipped() {
@@ -128,12 +128,27 @@ check_uri() {
   }" | ${resource_dir}/check | tee /dev/stderr
 }
 
+get_initial_ref() {
+  local repo=$1
+
+  git -C $repo rev-list HEAD | tail -n 1
+}
 
 check_uri_with_key() {
   jq -n "{
     source: {
       uri: $(echo $1 | jq -R .),
       private_key: $(cat $2 | jq -s -R .)
+    }
+  }" | ${resource_dir}/check | tee /dev/stderr
+}
+
+check_uri_with_credentials() {
+  jq -n "{
+    source: {
+      uri: $(echo $1 | jq -R .),
+      username: $(echo $2 | jq -R .),
+      password: $(echo $3 | jq -R .)
     }
   }" | ${resource_dir}/check | tee /dev/stderr
 }
@@ -255,6 +270,52 @@ check_uri_with_tag_filter() {
   }" | ${resource_dir}/check | tee /dev/stderr
 }
 
+check_uri_with_tag_filter_from() {
+  local uri=$1
+  local tag_filter=$2
+  local ref=$3
+
+  jq -n "{
+    source: {
+      uri: $(echo $uri | jq -R .),
+      tag_filter: $(echo $tag_filter | jq -R .)
+    },
+    version: {
+      ref: $(echo $ref | jq -R .)
+    }
+  }" | ${resource_dir}/check | tee /dev/stderr
+}
+
+check_uri_with_config() {
+  jq -n "{
+    source: {
+      uri: $(echo $1 | jq -R .),
+      git_config: [
+        {
+          name: \"core.pager\",
+          value: \"true\"
+        },
+        {
+          name: \"credential.helper\",
+          value: \"!true long command with variables \$@\"
+        }
+      ]
+    }
+  }" | ${resource_dir}/check | tee /dev/stderr
+}
+
+check_uri_disable_ci_skip() {
+  jq -n "{
+    source: {
+      uri: $(echo $1 | jq -R .),
+      disable_ci_skip: true
+    },
+    version: {
+      ref: $(echo $2 | jq -R .)
+    }
+  }" | ${resource_dir}/check | tee /dev/stderr
+}
+
 get_uri() {
   jq -n "{
     source: {
@@ -317,6 +378,25 @@ get_uri_at_branch() {
     }
   }" | ${resource_dir}/in "$3" | tee /dev/stderr
 }
+
+get_uri_with_config() {
+  jq -n "{
+    source: {
+      uri: $(echo $1 | jq -R .),
+      git_config: [
+        {
+          name: \"core.pager\",
+          value: \"true\"
+        },
+        {
+          name: \"credential.helper\",
+          value: \"!true long command with variables \$@\"
+        }
+      ]
+    }
+  }" | ${resource_dir}/in "$2" | tee /dev/stderr
+}
+
 
 put_uri() {
   jq -n "{
@@ -422,6 +502,28 @@ put_uri_with_rebase_with_tag_and_prefix() {
       tag_prefix: $(echo $4 | jq -R .),
       repository: $(echo $5 | jq -R .),
       rebase: true
+    }
+  }" | ${resource_dir}/out "$2" | tee /dev/stderr
+}
+
+put_uri_with_config() {
+  jq -n "{
+    source: {
+      uri: $(echo $1 | jq -R .),
+      branch: \"master\",
+      git_config: [
+        {
+          name: \"core.pager\",
+          value: \"true\"
+        },
+        {
+          name: \"credential.helper\",
+          value: \"!true long command with variables \$@\"
+        }
+      ]
+    },
+    params: {
+      repository: $(echo $3 | jq -R .)
     }
   }" | ${resource_dir}/out "$2" | tee /dev/stderr
 }

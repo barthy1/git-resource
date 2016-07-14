@@ -24,13 +24,17 @@ cat > $payload <&0
 
 load_pubkey $payload
 configure_git_ssl_verification $payload
+configure_credentials $payload
 
 uri=$(jq -r '.source.uri // ""' < $payload)
 branch=$(jq -r '.source.branch // ""' < $payload)
+git_config_payload=$(jq -r '.source.git_config // []' < $payload)
 ref=$(jq -r '.version.ref // "HEAD"' < $payload)
 depth=$(jq -r '(.params.depth // 0)' < $payload)
 fetch=$(jq -r '(.params.fetch // [])[]' < $payload)
 submodules=$(jq -r '(.params.submodules // "all")' < $payload)
+
+configure_git_global "${git_config_payload}"
 
 if [ -z "$uri" ]; then
   echo "invalid payload (missing uri):" >&2
@@ -66,13 +70,20 @@ elif [ "$submodules" != "none" ]; then
     git submodule update --init $depthflag --recursive $submodule
   done
 fi
+git submodule foreach "git lfs fetch && git lfs checkout"
 
 for branch in $fetch; do
   git fetch origin $branch
   git branch $branch FETCH_HEAD
 done
 
+if [ "$ref" == "HEAD" ]; then
+  return_ref=$(git rev-parse HEAD)
+else
+  return_ref=$ref
+fi
+
 jq -n "{
-  version: {ref: $(git rev-parse HEAD | jq -R .)},
+  version: {ref: $(echo $return_ref | jq -R .)},
   metadata: $(git_metadata)
 }" >&3

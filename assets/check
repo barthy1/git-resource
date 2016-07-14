@@ -17,13 +17,18 @@ cat > $payload <&0
 
 load_pubkey $payload
 configure_git_ssl_verification $payload
+configure_credentials $payload
 
 uri=$(jq -r '.source.uri // ""' < $payload)
 branch=$(jq -r '.source.branch // ""' < $payload)
 paths="$(jq -r '(.source.paths // ["."])[]' < $payload)" # those "'s are important
 ignore_paths="$(jq -r '":!" + (.source.ignore_paths // [])[]' < $payload)" # these ones too
 tag_filter=$(jq -r '.source.tag_filter // ""' < $payload)
+git_config_payload=$(jq -r '.source.git_config // []' < $payload)
 ref=$(jq -r '.version.ref // ""' < $payload)
+skip_ci_disabled=$(jq -r '.source.disable_ci_skip // false' < $payload)
+
+configure_git_global "${git_config_payload}"
 
 destination=$TMPDIR/git-resource-repo-cache
 
@@ -42,7 +47,12 @@ else
 fi
 
 if [ -n "$ref" ] && git cat-file -e "$ref"; then
-  log_range="--reverse ${ref}..HEAD"
+  init_commit=$(git rev-list --max-parents=0 HEAD)
+  if [ "${ref}" = "${init_commit}" ]; then
+    log_range="--reverse HEAD"
+  else
+    log_range="--reverse ${ref}~1..HEAD"
+  fi
 else
   log_range="-1"
 fi
@@ -53,12 +63,21 @@ else
   paths_search="-- $paths $ignore_paths"
 fi
 
+ci_skip=""
+if [ "$skip_ci_disabled" != "true" ]; then
+  ci_skip="--grep \\[ci\sskip\\] --invert-grep"
+fi
+
 if [ -n "$tag_filter" ]; then
-{
-  git describe --tags --abbrev=0 --match "$tag_filter"
-} | jq -R '.' | jq -s "map({ref: .})" >&3
+  {
+    if [ -n "$ref" ]; then
+      git tag --list "$tag_filter" --sort=creatordate --contains $ref
+    else
+      git tag --list "$tag_filter" --sort=creatordate | tail -1
+    fi
+  } | jq -R '.' | jq -s "map({ref: .})" >&3
 else
-{
-  git log --grep '\[ci skip\]' --invert-grep --format='%H' $log_range $paths_search
-} | jq -R '.' | jq -s "map({ref: .})" >&3
+  {
+    git log $ci_skip --format='%H' $log_range $paths_search
+  } | jq -R '.' | jq -s "map({ref: .})" >&3
 fi

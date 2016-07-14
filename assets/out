@@ -24,15 +24,19 @@ cat > $payload <&0
 
 load_pubkey $payload
 configure_git_ssl_verification $payload
+configure_credentials $payload
 
 uri=$(jq -r '.source.uri // ""' < $payload)
 branch=$(jq -r '.source.branch // ""' < $payload)
+git_config_payload=$(jq -r '.source.git_config // []' < $payload)
 repository=$(jq -r '.params.repository // ""' < $payload)
 tag=$(jq -r '.params.tag // ""' < $payload)
 tag_prefix=$(jq -r '.params.tag_prefix // ""' < $payload)
 rebase=$(jq -r '.params.rebase // false' < $payload)
 only_tag=$(jq -r '.params.only_tag // false' < $payload)
 annotation_file=$(jq -r '.params.annotate // ""' < $payload)
+
+configure_git_global "${git_config_payload}"
 
 if [ -z "$uri" ]; then
   echo "invalid payload (missing uri)"
@@ -118,7 +122,7 @@ elif [ "$rebase" = "true" ]; then
     fi
 
     # failed for reason other than non-fast-forward / fetch-first
-    if ! grep -q '\[rejected\]' /tmp/push-failure; then
+    if ! grep -q '\[rejected\]\|\[remote rejected\].*cannot lock ref' /tmp/push-failure; then
       echo "failed with non-rebase error"
       exit 1
     fi

@@ -20,6 +20,12 @@ Tracks the commits in a [git](http://git-scm.com/) repository.
       -----END RSA PRIVATE KEY-----
     ```
 
+* `username`: *Optional.* Username for HTTP(S) auth when pulling/pushing.
+  This is needed when only HTTP/HTTPS protocol for git is available (which does not support private key auth)
+  and auth is required.
+
+* `password`: *Optional.* Password for HTTP(S) auth when pulling/pushing.
+
 * `paths`: *Optional.* If specified (as a list of glob patterns), only changes
   to the specified files will yield new versions from `check`.
 
@@ -42,6 +48,17 @@ Tracks the commits in a [git](http://git-scm.com/) repository.
   [glob(7)](http://man7.org/linux/man-pages/man7/glob.7.html) compatible (as
   in, bash compatible).
 
+* `git_config`: *Optional*. If specified as (list of pairs `name` and `value`)
+  it will configure git global options, setting each name with each value.
+
+  This can be useful to set options like `credential.helper` or similar.
+
+  See the [`git-config(1)` manual page](https://www.kernel.org/pub/software/scm/git/docs/git-config.html)
+  for more information and documentation of existing git options.
+
+* `disable_ci_skip`: *Optional* Allows for commits that have been labeled with `[ci skip]`
+   previously to be discovered by the resource.
+
 ### Example
 
 Resource configuration for a private repo:
@@ -59,6 +76,10 @@ resources:
       <Lots more text>
       DWiJL+OFeg9kawcUL6hQ8JeXPhlImG6RTUffma9+iGQyyBMCGd1l
       -----END RSA PRIVATE KEY-----
+    git_config:
+    - name: core.bigFileThreshold
+      value: 10m
+    disable_ci_skip: true
 ```
 
 Fetching a repo with only 100 commits of history:
@@ -76,13 +97,12 @@ Pushing local commits to the repo:
   params: {repository: some-other-repo}
 ```
 
-
 ## Behavior
 
 ### `check`: Check for new commits.
 
 The repository is cloned (or pulled if already present), and any commits
-made after the given version are returned. If no version is given, the ref
+from the given version on are returned. If no version is given, the ref
 for `HEAD` is returned.
 
 Any commits that contain the string `[ci skip]` will be ignored. This
@@ -91,10 +111,9 @@ allows you to commit to your repository without triggering a new version.
 ### `in`: Clone the repository, at the given ref.
 
 Clones the repository to the destination, and locks it down to a given ref.
-Returns the resulting ref as the version.
+It will return the same given ref as version.
 
 Submodules are initialized and updated recursively.
-
 
 #### Parameters
 
