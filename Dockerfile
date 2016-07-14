@@ -1,7 +1,7 @@
-FROM 140.211.168.166:5000/golang1.6
+FROM 140.211.168.97:5000/golang1.6
 
 ENV LANG C
-RUN apt-get install -y curl
+#RUN apt-get install -y curl
 
 RUN echo "dash dash/sh boolean false" | debconf-set-selections
 RUN DEBIAN_FRONTEND=noninteractive dpkg-reconfigure dash
