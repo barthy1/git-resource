@@ -1,0 +1,12 @@
+FROM golang:1.7
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+		openssh-client \
+	&& rm -rf /var/lib/apt/lists/*
+
+ADD assets/ /opt/resource/
+RUN chmod +x /opt/resource/*
+
+ADD scripts/install_git_lfs_ppc64le.sh install_git_lfs_ppc64le.sh
+RUN ./install_git_lfs_ppc64le.sh
