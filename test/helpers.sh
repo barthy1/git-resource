@@ -35,6 +35,9 @@ init_repo() {
       -c user.email='test@example.com' \
       commit -q --allow-empty -m "init"
 
+    git config --global user.email "test@example.com"
+    git config --global user.name "test"
+
     # create some bogus branch
     git checkout -b bogus
 

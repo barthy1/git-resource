@@ -1,0 +1,3 @@
+[submodule "ppc64le_images"]
+	path = ppc64le_images
+	url = https://github.com/barthy1/ppc64le_images
