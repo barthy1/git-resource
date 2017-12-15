@@ -12,6 +12,9 @@ if [ -d /opt/resource ]; then
 else
   resource_dir=$(cd $(dirname $0)/../assets && pwd)
 fi
+test_dir=$(cd $(dirname $0) && pwd)
+keygrip=276D99F5B65388AF85DF54B16B08EF0A44C617AC
+fingerprint=A3E20CD6371D49E244B0730D1CDD25AEB0F5F8EF
 
 run() {
   export TMPDIR=$(mktemp -d ${TMPDIR_ROOT}/git-tests.XXXXXX)
@@ -65,6 +68,12 @@ init_repo_with_submodule() {
   echo $project,$submodule
 }
 
+fetch_head_ref() {
+  local repo=$1
+
+  git -C $repo rev-parse HEAD
+}
+
 make_commit_to_file_on_branch() {
   local repo=$1
   local file=$2
@@ -107,6 +116,11 @@ make_commit_to_be_skipped() {
   make_commit_to_file $1 some-file "[ci skip]"
 }
 
+make_commit_to_be_skipped2() {
+  make_commit_to_file $1 some-file "[skip ci]"
+}
+
+
 merge_branch() {
   local repo=$1
   local target=$2
@@ -120,6 +134,24 @@ merge_branch() {
 
   # output resulting sha
   git -C $repo rev-parse HEAD
+}
+
+delete_public_key() {
+  if gpg -k ${fingerprint} > /dev/null; then
+    gpg --batch --yes --delete-keys ${fingerprint}
+  fi
+}
+
+gpg_fixture_repo_path() {
+  echo "${test_dir}/gpg/fixture_repo.git"
+}
+
+git_crypt_fixture_repo_path() {
+  echo "${test_dir}/git-crypt/fixture_repo.git"
+}
+
+git_crypt_fixture_key_path() {
+  echo "${test_dir}/git-crypt/fixture_repo.key"
 }
 
 make_empty_commit() {
@@ -349,6 +381,18 @@ get_uri() {
   }" | ${resource_dir}/in "$2" | tee /dev/stderr
 }
 
+get_uri_with_git_crypt_key() {
+  local git_crypt_key_path=$(git_crypt_fixture_key_path)
+  local git_crypt_key_base64_encoded=$(cat $git_crypt_key_path | base64)
+
+  jq -n "{
+    source: {
+      uri: $(echo $1 | jq -R .),
+      git_crypt_key: $(echo $git_crypt_key_base64_encoded | jq -R .)
+    }
+  }" | ${resource_dir}/in "$2" | tee /dev/stderr
+}
+
 get_uri_at_depth() {
   jq -n "{
     source: {
@@ -422,6 +466,88 @@ get_uri_with_config() {
   }" | ${resource_dir}/in "$2" | tee /dev/stderr
 }
 
+get_uri_with_verification_key() {
+  jq -n "{
+    source: {
+      uri: $(echo $1 | jq -R .),
+      commit_verification_keys: [\"$(cat ${test_dir}/gpg/public.key)\"]
+    }
+  }" | ${resource_dir}/in "$2" | tee /dev/stderr
+  exit_code=$?
+  delete_public_key
+  return ${exit_code}
+}
+
+get_uri_with_verification_key_and_tag_filter() {
+  local uri=$1
+  local dest=$2
+  local tag_filter=$3
+  local version=$4
+  jq -n "{
+    source: {
+      uri: $(echo $uri | jq -R .),
+      commit_verification_keys: [\"$(cat ${test_dir}/gpg/public.key)\"],
+      tag_filter: $(echo $tag_filter | jq -R .)
+    },
+    version: {
+      ref: $(echo $version | jq -R .)
+    }
+  }" | ${resource_dir}/in "$dest" | tee /dev/stderr
+  exit_code=$?
+  delete_public_key
+  return ${exit_code}
+}
+
+get_uri_with_invalid_verification_key() {
+  jq -n "{
+    source: {
+      uri: $(echo $1 | jq -R .),
+      commit_verification_keys: [\"abcd\"]
+    }
+  }" | ${resource_dir}/in "$2" | tee /dev/stderr
+}
+
+get_uri_with_unknown_verification_key() {
+  jq -n "{
+    source: {
+      uri: $(echo $1 | jq -R .),
+      commit_verification_keys: [\"$(cat ${test_dir}/gpg/unknown_public.key)\"]
+    }
+  }" | ${resource_dir}/in "$2" | tee /dev/stderr
+  exit_code=$?
+  delete_public_key
+  return ${exit_code}
+}
+
+get_uri_when_using_keyserver() {
+  jq -n "{
+    source: {
+      uri: $(echo $1 | jq -R .),
+      commit_verification_key_ids: [\"A3E20CD6371D49E244B0730D1CDD25AEB0F5F8EF\"]
+    }
+  }" | ${resource_dir}/in "$2" | tee /dev/stderr
+  exit_code=$?
+  delete_public_key
+  return ${exit_code}
+}
+
+get_uri_when_using_keyserver_and_bogus_key() {
+  jq -n "{
+    source: {
+      uri: $(echo $1 | jq -R .),
+      commit_verification_key_ids: [\"abcd\"]
+    }
+  }" | ${resource_dir}/in "$2" | tee /dev/stderr
+}
+
+get_uri_when_using_keyserver_and_unknown_key() {
+  jq -n "{
+    source: {
+      uri: $(echo $1 | jq -R .),
+      commit_verification_key_ids: [\"24C51CCE1AB7B2EFEF72B9A48EAB0B8DEE26E5FD\"]
+    }
+  }" | ${resource_dir}/in "$2" | tee /dev/stderr
+}
 
 put_uri() {
   jq -n "{
@@ -431,6 +557,19 @@ put_uri() {
     },
     params: {
       repository: $(echo $3 | jq -R .)
+    }
+  }" | ${resource_dir}/out "$2" | tee /dev/stderr
+}
+
+put_uri_with_force() {
+  jq -n "{
+    source: {
+      uri: $(echo $1 | jq -R .),
+      branch: \"master\"
+    },
+    params: {
+      repository: $(echo $3 | jq -R .),
+      force: true
     }
   }" | ${resource_dir}/out "$2" | tee /dev/stderr
 }
@@ -448,6 +587,20 @@ put_uri_with_only_tag() {
   }" | ${resource_dir}/out "$2" | tee /dev/stderr
 }
 
+put_uri_with_only_tag_with_force() {
+  jq -n "{
+    source: {
+      uri: $(echo $1 | jq -R .),
+      branch: \"master\"
+    },
+    params: {
+      repository: $(echo $3 | jq -R .),
+      only_tag: true,
+      force: true
+    }
+  }" | ${resource_dir}/out "$2" | tee /dev/stderr
+}
+
 put_uri_with_rebase() {
   jq -n "{
     source: {
@@ -456,6 +609,33 @@ put_uri_with_rebase() {
     },
     params: {
       repository: $(echo $3 | jq -R .),
+      rebase: true
+    }
+  }" | ${resource_dir}/out "$2" | tee /dev/stderr
+}
+
+put_uri_with_merge() {
+  jq -n "{
+    source: {
+      uri: $(echo $1 | jq -R .),
+      branch: \"master\"
+    },
+    params: {
+      repository: $(echo $3 | jq -R .),
+      merge: true
+    }
+  }" | ${resource_dir}/out "$2" | tee /dev/stderr
+}
+
+put_uri_with_merge_and_rebase() {
+  jq -n "{
+    source: {
+      uri: $(echo $1 | jq -R .),
+      branch: \"master\"
+    },
+    params: {
+      repository: $(echo $3 | jq -R .),
+      merge: true,
       rebase: true
     }
   }" | ${resource_dir}/out "$2" | tee /dev/stderr
@@ -526,6 +706,33 @@ put_uri_with_rebase_with_tag_and_prefix() {
       tag: $(echo $3 | jq -R .),
       tag_prefix: $(echo $4 | jq -R .),
       repository: $(echo $5 | jq -R .),
+      rebase: true
+    }
+  }" | ${resource_dir}/out "$2" | tee /dev/stderr
+}
+
+put_uri_with_notes() {
+  jq -n "{
+    source: {
+      uri: $(echo $1 | jq -R .),
+      branch: \"master\"
+    },
+    params: {
+      notes: $(echo $3 | jq -R .),
+      repository: $(echo $4 | jq -R .)
+    }
+  }" | ${resource_dir}/out "$2" | tee /dev/stderr
+}
+
+put_uri_with_rebase_with_notes() {
+  jq -n "{
+    source: {
+      uri: $(echo $1 | jq -R .),
+      branch: \"master\"
+    },
+    params: {
+      notes: $(echo $3 | jq -R .),
+      repository: $(echo $4 | jq -R .),
       rebase: true
     }
   }" | ${resource_dir}/out "$2" | tee /dev/stderr

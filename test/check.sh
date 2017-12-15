@@ -243,6 +243,16 @@ it_checks_given_paths() {
   "
 }
 
+it_checks_given_glob_paths() { # issue gh-120
+  local repo=$(init_repo)
+  mkdir -p $repo/a/b
+  make_commit_to_file $repo a/file > /dev/null
+  local ref1=$(make_commit_to_file $repo a/b/file)
+  check_uri_paths $repo "**/file" | jq -e "
+    . == [{ref: $(echo $ref1 | jq -R .)}]
+  "
+}
+
 it_checks_given_ignored_paths() {
   local repo=$(init_repo)
   local ref1=$(make_commit_to_file $repo file-a)
@@ -291,6 +301,19 @@ it_checks_given_ignored_paths() {
       {ref: $(echo $ref5 | jq -R .)}
     ]
   "
+  local ref8=$(make_commit_to_file $repo another-file)
+
+  check_uri_paths_ignoring $repo '*-file' 'another-file' | jq -e "
+    . == [
+      {ref: $(echo $ref7 | jq -R .)}
+    ]
+  "
+
+  check_uri_paths_ignoring $repo '.' 'file-*' | jq -e "
+    . == [
+      {ref: $(echo $ref8 | jq -R .)}
+    ]
+  "
 }
 
 it_can_check_when_not_ff() {
@@ -329,13 +352,14 @@ it_skips_marked_commits() {
   local ref1=$(make_commit $repo)
   local ref2=$(make_commit_to_be_skipped $repo)
   local ref3=$(make_commit $repo "not ci skipped")
-  local ref4=$(make_commit $repo)
+  local ref4=$(make_commit_to_be_skipped2 $repo)
+  local ref5=$(make_commit $repo)
 
   check_uri_from $repo $ref1 | jq -e "
     . == [
       {ref: $(echo $ref1 | jq -R .)},
       {ref: $(echo $ref3 | jq -R .)},
-      {ref: $(echo $ref4 | jq -R .)}
+      {ref: $(echo $ref5 | jq -R .)}
     ]
   "
 }
@@ -344,7 +368,7 @@ it_skips_marked_commits_with_no_version() {
   local repo=$(init_repo)
   local ref1=$(make_commit $repo)
   local ref2=$(make_commit_to_be_skipped $repo)
-  local ref3=$(make_commit_to_be_skipped $repo)
+  local ref3=$(make_commit_to_be_skipped2 $repo)
 
   check_uri $repo | jq -e "
     . == [
@@ -358,12 +382,14 @@ it_does_not_skip_marked_commits_when_disable_skip_configured() {
   local ref1=$(make_commit $repo)
   local ref2=$(make_commit_to_be_skipped $repo)
   local ref3=$(make_commit $repo)
+  local ref4=$(make_commit_to_be_skipped2 $repo)
 
   check_uri_disable_ci_skip $repo $ref1 | jq -e "
     . == [
       {ref: $(echo $ref1 | jq -R .)},
       {ref: $(echo $ref2 | jq -R .)},
-      {ref: $(echo $ref3 | jq -R .)}
+      {ref: $(echo $ref3 | jq -R .)},
+      {ref: $(echo $ref4 | jq -R .)}
     ]
   "
 }
@@ -451,6 +477,7 @@ run it_can_check_from_a_first_commit_in_repo
 run it_can_check_from_a_bogus_sha
 run it_skips_ignored_paths
 run it_checks_given_paths
+run it_checks_given_glob_paths
 run it_checks_given_ignored_paths
 run it_can_check_when_not_ff
 run it_skips_marked_commits

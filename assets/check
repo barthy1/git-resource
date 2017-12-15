@@ -16,6 +16,7 @@ payload=$TMPDIR/git-resource-request
 cat > $payload <&0
 
 load_pubkey $payload
+configure_https_tunnel $payload
 configure_git_ssl_verification $payload
 configure_credentials $payload
 
@@ -65,7 +66,7 @@ fi
 
 ci_skip=""
 if [ "$skip_ci_disabled" != "true" ]; then
-  ci_skip="--grep \\[ci\sskip\\] --invert-grep"
+  ci_skip="--grep \\[ci\\sskip\\] --grep \\[skip\\sci\\] --invert-grep"
 fi
 
 if [ -n "$tag_filter" ]; then
@@ -78,6 +79,8 @@ if [ -n "$tag_filter" ]; then
   } | jq -R '.' | jq -s "map({ref: .})" >&3
 else
   {
+    set -f
     git log $ci_skip --format='%H' --first-parent $log_range $paths_search
+    set +f
   } | jq -R '.' | jq -s "map({ref: .})" >&3
 fi
